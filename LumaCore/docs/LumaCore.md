@@ -63,9 +63,31 @@ There are no compiled-in `*Sigs[]` arrays anymore. The runtime pattern map is th
 
 ### Pattern refresh
 
-If Steam updates and LumaCore stops resolving hooks for the new client, downgrade Steam if possible and report the Steam update to the maintainer with the collected LumaCore logs.
+If Steam updates and LumaCore stops resolving hooks for the new client (banner: "No cached LumaCore support data for this Steam build"), port the last known TOMLs onto the new DLLs with `tools/lumacore_pattern_port.py`:
+
+1. Take the newest TOML upstream has for a *stable* build and the matching `steamclient64.dll` / `SteamUI.dll` of that build (the `bins_win64` package listed in SteamDatabase/SteamTracking `ClientManifest/steam_client_win64`, downloadable from `client-update.fastly.steamstatic.com`). The DLL's SHA-256 must equal the TOML's file name.
+2. Run once per DLL:
+   ```
+   python tools/lumacore_pattern_port.py --old <old>.toml --old-dll <old>/steamclient64.dll \
+       --dll "<Steam>/steamclient64.dll" --out "<Steam>/lumacore/pattern"
+   ```
+   The tool re-locates every function by signature, byte similarity, the local RVA shift of matched neighbours, twin layout, unique-string / call-graph / vtable / RTTI cross references, and checks `.pdata` function starts. Functions it cannot place unambiguously are left out (that hook is skipped instead of attaching to a wrong address). Needs `capstone` for the cross-reference pass.
+3. Restart Steam. The cache is read before the network, so the ported file is used immediately.
+
+If that leaves important hooks unresolved, downgrade Steam if possible and report the Steam update to the maintainer with the collected LumaCore logs.
 
 The runtime fetcher's own logs (`<Steam>\lumacore\misc.log`) note every overlay, cache, and network step so failed pattern resolution can be triaged from user logs.
+
+### IPC spec refresh
+
+A second, separate data file carries the IPC method hashes: `<Steam>\lumacore\pattern\steamclientipc\<steamclient-sha>.toml`. When it is missing for the running build LumaCore shows the popup *"LumaCore: IPC specs unavailable"* and the ticket/ownership IPC handlers register with stale hashes. Valve re-hashes these methods on most client updates, so the file has to be regenerated the same way as the patterns, with `tools/lumacore_ipc_port.py`:
+
+```
+python tools/lumacore_ipc_port.py --old-spec <old>.toml --old-dll <old>/steamclient64.dll \
+    --dll "<Steam>/steamclient64.dll" --out "<Steam>/lumacore/pattern/steamclientipc"
+```
+
+For each method it reads the funcHash, fencepost and argc back out of the DLL by two independent routes — the generated client wrapper (name string → serialising function → stored hash, cross-checked against the interface dispatcher) and the `I<Interface>Map` vtable slot — and requires both to agree. With `--old-spec`/`--old-dll` it first reproduces the known old hashes as a self-test and aborts on any mismatch. Only the interfaces LumaCore resolves through the spec are written (`IClientUser`, `IClientUtils`); `IClientRemoteStorage` is deliberately omitted because its hooks use compile-time hashes and are never looked up through the spec. Needs `capstone`. Restart Steam afterwards; the file is read from the local cache before any network fetch.
 
 ---
 

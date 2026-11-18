@@ -46,6 +46,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
     QTabWidget,
@@ -232,7 +233,11 @@ class SFFMainWindow(QMainWindow):
             " border-bottom: 1px solid #7a5018;"
             "}"
         )
-        root_layout.addWidget(self._lumacore_banner)
+        # Keep the banner at its text height. With the default Preferred
+        # policy the layout handed it part of the window's spare height,
+        # which blew it up to a third of the window.
+        self._lumacore_banner.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        root_layout.addWidget(self._lumacore_banner, 0)
 
         # ── Classic tab UI (hidden by default — new UI is primary) ──
         self.tabs = QTabWidget()
@@ -265,7 +270,7 @@ class SFFMainWindow(QMainWindow):
                 self._web_view.setAutoFillBackground(False)
             except Exception:
                 pass
-        root_layout.addWidget(self._web_view)
+        root_layout.addWidget(self._web_view, 1)
 
         self._web_channel = QWebChannel()
         from sff.gui.web_bridge import WebBridge
